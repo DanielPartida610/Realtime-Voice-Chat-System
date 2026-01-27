@@ -1,0 +1,48 @@
+server/
+├── src/
+│   ├── app.js                  # express app config (middlewares, routes)
+│   ├── server.js               # http server + socket init + start
+│   │
+│   ├── config/
+│   │   ├── env.js              # env loader/validation
+│   │   ├── cors.js             # cors config
+│   │   └── redis.js            # redis clients + adapter setup
+│   │
+│   ├── routes/                 # REST routes (optional but professional)
+│   │   ├── index.js
+│   │   ├── health.routes.js
+│   │   └── rooms.routes.js     # list rooms / create room (optional)
+│   │
+│   ├── controllers/            # REST controllers
+│   │   ├── health.controller.js
+│   │   └── rooms.controller.js
+│   │
+│   ├── socket/                 # socket layer
+│   │   ├── socket.js           # create io instance + adapter
+│   │   ├── events.js           # event names (constants)
+│   │   └── controllers/        # socket controllers (like express controllers)
+│   │       ├── room.socket.controller.js
+│   │       ├── webrtc.socket.controller.js
+│   │       └── presence.socket.controller.js
+│   │
+│   ├── services/               # business logic (used by controllers)
+│   │   ├── room.service.js
+│   │   ├── presence.service.js
+│   │   └── webrtc.service.js   # mostly relays + validation
+│   │
+│   ├── stores/                 # data layer (redis/db)
+│   │   └── room.store.js       # redis: room users, TTL, etc
+│   │
+│   ├── middlewares/
+│   │   ├── error.middleware.js
+│   │   └── validate.middleware.js (optional)
+│   │
+│   ├── utils/
+│   │   └── logger.js
+│   │
+│   └── types/                  # optional (shared shapes/docs)
+│       └── index.js
+│
+├── .env
+├── package.json
+└── Dockerfile
