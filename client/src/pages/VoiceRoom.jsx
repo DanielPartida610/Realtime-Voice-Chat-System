@@ -242,22 +242,34 @@ export default function VoiceRoom({ onLeave }) {
     });
   };
 
-  // ✅ NEW: Disconnect function
+  // ✅ FIXED: Proper disconnect function
   const handleDisconnect = () => {
     if (confirm("Are you sure you want to leave the room?")) {
-      // Stop local audio tracks
+      // 1. Stop local audio tracks
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
       }
 
-      // Disconnect socket (triggers server's "disconnecting" event)
-      socket.disconnect();
+      // 2. Emit room:leave event to server (triggers cleanup on server)
+      socket.emit("room:leave");
 
-      // Clear room data
-      socket.data = {};
+      // 3. Clear local state immediately
+      setUsers([]);
+      setMessages([]);
+      setTypingMap({});
+      setReactions({});
+      setDmMessages([]);
+      setDmReactions({});
+      setView("room");
+      setActiveDMUser(null);
 
-      // Call parent callback to show join screen
-      onLeave?.();
+      // 4. Disconnect socket after a brief delay to let server process
+      setTimeout(() => {
+        socket.disconnect();
+        
+        // 5. Call parent callback to show join screen
+        onLeave?.();
+      }, 150);
     }
   };
 
@@ -383,7 +395,7 @@ export default function VoiceRoom({ onLeave }) {
               </svg>
             </button>
 
-            {/* ✅ NEW: Disconnect button */}
+            {/* ✅ Disconnect button */}
             <button 
               className="voiceBtn" 
               onClick={handleDisconnect} 
@@ -430,15 +442,14 @@ export default function VoiceRoom({ onLeave }) {
             )}
           </div>
 
-          {/* ✅ NEW: Disconnect button in topbar for mobile */}
+          {/* ✅ Disconnect button in topbar for mobile */}
           <button 
-            className="voiceBtn" 
+            className="voiceBtn topbar-disconnect" 
             onClick={handleDisconnect} 
             title="Leave Room"
             style={{
               marginLeft: 'auto',
-              background: 'var(--danger)',
-              display: 'none'
+              background: 'var(--danger)'
             }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -460,10 +471,14 @@ export default function VoiceRoom({ onLeave }) {
         />
       </div>
 
-      {/* ✅ Add mobile disconnect button CSS */}
+      {/* ✅ Mobile disconnect button CSS */}
       <style>{`
+        .topbar-disconnect {
+          display: none;
+        }
+        
         @media (max-width: 768px) {
-          .topbar .voiceBtn {
+          .topbar-disconnect {
             display: flex !important;
           }
         }
