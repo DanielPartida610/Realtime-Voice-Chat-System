@@ -5,7 +5,7 @@ import RemoteAudios from "../components/RemoteAudios";
 import { useLocalAudio } from "../hooks/useLocalAudio";
 import { useWebRTC } from "../hooks/useWebRTC";
 
-export default function VoiceRoom({ onLeave }) {
+export default function VoiceRoom({ roomId = "general", roomName = "General", onLeave }) {
   const socket = useSocket();
 
   const myName = (localStorage.getItem("vc_name") || "").trim();
@@ -34,6 +34,23 @@ export default function VoiceRoom({ onLeave }) {
 
   // Helper: normalize names for comparison
   const normalizeName = (name) => (name || "").trim().toLowerCase();
+
+  // ✅ JOIN THE SELECTED ROOM
+  useEffect(() => {
+    if (!roomId || !myName) return;
+
+    console.log("🚪 Joining room:", roomId);
+    
+    socket.emit("room:join", {
+      roomId: roomId,
+      user: { name: myName },
+    });
+
+    return () => {
+      console.log("👋 Leaving room:", roomId);
+      // Cleanup happens via handleDisconnect
+    };
+  }, [socket, roomId, myName]);
 
   // keep mic track synced
   useEffect(() => {
@@ -190,7 +207,7 @@ export default function VoiceRoom({ onLeave }) {
     socket.emit("chat:send", { text });
   };
 
-  // ✅ NEW: send voice message
+  // send voice message
   const sendVoiceMessage = (voiceData) => {
     console.log("📨 VoiceRoom received voice data:", voiceData);
     
@@ -300,7 +317,7 @@ export default function VoiceRoom({ onLeave }) {
       setTimeout(() => {
         socket.disconnect();
         
-        // 5. Call parent callback to show join screen
+        // 5. Call parent callback to show room selection
         onLeave?.();
       }, 150);
     }
@@ -353,7 +370,7 @@ export default function VoiceRoom({ onLeave }) {
                 <path d="M5 13h14v-2H5v2zm0 4h14v-2H5v2zM5 7v2h14V7H5z"/>
               </svg>
             </div>
-            <div className="userName">general</div>
+            <div className="userName">{roomName}</div> {/* ✅ Show room name */}
           </div>
 
           <div className="sectionLabel">DIRECT MESSAGES</div>
@@ -462,7 +479,7 @@ export default function VoiceRoom({ onLeave }) {
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{marginRight: 8}}>
                   <path d="M5 13h14v-2H5v2zm0 4h14v-2H5v2zM5 7v2h14V7H5z"/>
                 </svg>
-                <span className="channelTitle">general</span>
+                <span className="channelTitle">{roomName}</span> {/* ✅ Show room name */}
               </>
             ) : (
               <>

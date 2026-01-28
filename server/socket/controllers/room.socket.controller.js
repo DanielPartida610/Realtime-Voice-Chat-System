@@ -1,6 +1,7 @@
 import { joinRoom, leaveRoom } from "../../services/room.service.js";
 import { addChat, getChatHistory } from "../../services/chat.service.js";
 import { setOnline, setOffline } from "../../stores/presence.store.js";
+import { updateRoomUserCount, getRoomList } from "../../services/room.service.js";
 
 export function roomSocketController(io, socket) {
   const sysMsg = async (roomId, text) => {
@@ -33,6 +34,11 @@ export function roomSocketController(io, socket) {
     const users = await joinRoom(roomId, socket.id, { name });
     io.to(roomId).emit("room:users", users);
 
+    // ✅✅ UPDATE ROOM USER COUNT
+    await updateRoomUserCount(roomId, users.length);
+    const rooms = await getRoomList();
+    io.emit("rooms:list", rooms); // Broadcast to all clients
+
     // ✅ send history to late joiner
     const history = await getChatHistory(roomId);
     socket.emit("chat:history", history);
@@ -56,6 +62,11 @@ export function roomSocketController(io, socket) {
 
     // ✅ update users list
     const users = await leaveRoom(roomId, socket.id);
+    
+    // ✅✅ UPDATE ROOM USER COUNT
+    await updateRoomUserCount(roomId, users.length);
+    const rooms = await getRoomList();
+    io.emit("rooms:list", rooms); // Broadcast to all clients
     
     // ✅ notify room BEFORE socket leaves
     io.to(roomId).emit("room:users", users);
@@ -88,6 +99,12 @@ export function roomSocketController(io, socket) {
     await setOffline(name, socket.id);
 
     const users = await leaveRoom(roomId, socket.id);
+    
+    // ✅✅ UPDATE ROOM USER COUNT
+    await updateRoomUserCount(roomId, users.length);
+    const rooms = await getRoomList();
+    io.emit("rooms:list", rooms); // Broadcast to all clients
+    
     io.to(roomId).emit("room:users", users);
 
     await sysMsg(roomId, `${name} left the room`);
