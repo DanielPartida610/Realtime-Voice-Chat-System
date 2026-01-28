@@ -190,6 +190,39 @@ export default function VoiceRoom({ onLeave }) {
     socket.emit("chat:send", { text });
   };
 
+  // ✅ NEW: send voice message
+  const sendVoiceMessage = (voiceData) => {
+    console.log("📨 VoiceRoom received voice data:", voiceData);
+    
+    if (!joined) {
+      alert("Join a room first");
+      return;
+    }
+
+    if (view === "dm") {
+      if (!activeDMUser) {
+        alert("Pick a user to DM");
+        return;
+      }
+      if (normalizeName(activeDMUser) === normalizeName(myName)) {
+        alert("You can't DM yourself! 😭");
+        return;
+      }
+      
+      console.log("📤 Emitting dm:send:voice to:", activeDMUser);
+      socket.emit("dm:send:voice", { 
+        toUser: activeDMUser, 
+        ...voiceData 
+      });
+      console.log("✅ Voice DM sent");
+      return;
+    }
+
+    console.log("📤 Emitting chat:send:voice to room");
+    socket.emit("chat:send:voice", voiceData);
+    console.log("✅ Voice message sent to room");
+  };
+
   // handle reactions
   const handleReact = (messageId, emoji) => {
     if (!joined) return;
@@ -242,7 +275,7 @@ export default function VoiceRoom({ onLeave }) {
     });
   };
 
-  // ✅ FIXED: Proper disconnect function
+  // disconnect function
   const handleDisconnect = () => {
     if (confirm("Are you sure you want to leave the room?")) {
       // 1. Stop local audio tracks
@@ -395,7 +428,7 @@ export default function VoiceRoom({ onLeave }) {
               </svg>
             </button>
 
-            {/* ✅ Disconnect button */}
+            {/* Disconnect button */}
             <button 
               className="voiceBtn" 
               onClick={handleDisconnect} 
@@ -442,7 +475,7 @@ export default function VoiceRoom({ onLeave }) {
             )}
           </div>
 
-          {/* ✅ Disconnect button in topbar for mobile */}
+          {/* Disconnect button in topbar for mobile */}
           <button 
             className="voiceBtn topbar-disconnect" 
             onClick={handleDisconnect} 
@@ -461,6 +494,7 @@ export default function VoiceRoom({ onLeave }) {
         <ChatBox
           messages={displayMessages}
           onSend={sendMessage}
+          onSendVoice={sendVoiceMessage}  
           onTyping={view === "room" ? setTyping : undefined}
           typingText={view === "room" ? typingText : ""}
           onReact={handleReact}
@@ -471,7 +505,7 @@ export default function VoiceRoom({ onLeave }) {
         />
       </div>
 
-      {/* ✅ Mobile disconnect button CSS */}
+      {/* Mobile disconnect button CSS */}
       <style>{`
         .topbar-disconnect {
           display: none;

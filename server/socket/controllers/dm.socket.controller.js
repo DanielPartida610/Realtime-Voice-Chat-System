@@ -8,17 +8,22 @@ const makeDMId = (a, b) => {
 };
 
 export function dmSocketController(io, socket) {
+  // ====== DM HISTORY ======
   socket.on("dm:history", async ({ toUser }) => {
     const fromUser = socket.data.user?.name;
+    
     if (!fromUser || !toUser) return;
 
     const dmId = makeDMId(fromUser, toUser);
     const history = await getDMHistory(dmId);
+    
     socket.emit("dm:history", { dmId, history });
   });
 
+  // ====== SEND TEXT DM ======
   socket.on("dm:send", async ({ toUser, text }) => {
     const fromUser = socket.data.user?.name;
+    
     if (!fromUser || !toUser) return;
 
     const clean = (text || "").trim();
@@ -29,6 +34,7 @@ export function dmSocketController(io, socket) {
     const msg = {
       id: `${Date.now()}-${Math.random()}`,
       dmId,
+      type: "chat",
       text: clean,
       user: fromUser,
       to: toUser,
@@ -37,24 +43,67 @@ export function dmSocketController(io, socket) {
 
     await pushDM(dmId, msg);
 
-    // sender always receives
+    // Send to sender
     socket.emit("dm:message", msg);
 
-    // receiver only if online
+    // Send to receiver if online
     const toSocketId = await getUserSocket(toUser);
-    if (toSocketId) io.to(toSocketId).emit("dm:message", msg);
+    if (toSocketId) {
+      io.to(toSocketId).emit("dm:message", msg);
+    }
   });
 
-  // ✅ NEW: DM reactions
+  // ====== SEND VOICE DM ======
+  socket.on("dm:send:voice", async ({ toUser, audio, duration, mimeType }) => {
+    const fromUser = socket.data.user?.name;
+    
+    if (!fromUser || !toUser) {
+      console.error("dm:send:voice - missing fromUser or toUser");
+      return;
+    }
+    
+    if (!audio) {
+      console.error("dm:send:voice - no audio data");
+      return;
+    }
+
+    const dmId = makeDMId(fromUser, toUser);
+
+    const msg = {
+      id: `${Date.now()}-${Math.random()}`,
+      dmId,
+      type: "voice",
+      audio,
+      duration: duration || 0,
+      mimeType: mimeType || "audio/webm",
+      user: fromUser,
+      to: toUser,
+      createdAt: Date.now(),
+    };
+
+    await pushDM(dmId, msg);
+
+    // Send to sender
+    socket.emit("dm:message", msg);
+
+    // Send to receiver if online
+    const toSocketId = await getUserSocket(toUser);
+    if (toSocketId) {
+      io.to(toSocketId).emit("dm:message", msg);
+    }
+  });
+
+  // ====== DM REACTIONS ======
   socket.on("dm:react", async ({ toUser, messageId, emoji }) => {
     const fromUser = socket.data.user?.name;
+    
     if (!fromUser || !toUser || !messageId || !emoji) return;
 
     const dmId = makeDMId(fromUser, toUser);
     
     await toggleReaction(dmId, messageId, emoji, fromUser);
 
-    // ✅ Send to both users
+    // Send to both users
     socket.emit("dm:reaction", { messageId, emoji, user: fromUser });
     
     const toSocketId = await getUserSocket(toUser);
