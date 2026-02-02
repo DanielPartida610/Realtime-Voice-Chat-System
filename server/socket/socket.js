@@ -5,9 +5,10 @@ import { ENV } from "../config/env.js";
 
 import { roomSocketController } from "./controllers/room.socket.controller.js";
 import { chatSocketController } from "./controllers/chat.socket.controller.js";
-import { dmSocketController } from "./controllers/dm.socket.controller.js"; // ✅ add
+import { dmSocketController } from "./controllers/dm.socket.controller.js";
 import { presenceSocketController } from "./controllers/presence.socket.controller.js";
 import { webrtcSocketController } from "./controllers/webrtc.socket.controller.js";
+import { registerCallSocketHandlers } from "./controllers/call.socket.controller.js";
 
 export function initSocket(server) {
   const io = new Server(server, {
@@ -26,6 +27,7 @@ export function initSocket(server) {
     dmSocketController(io, socket);          // ✅ add
     presenceSocketController(io, socket);
     webrtcSocketController(io, socket);
+    registerCallSocketHandlers(io, socket);
   });
 
   return io;

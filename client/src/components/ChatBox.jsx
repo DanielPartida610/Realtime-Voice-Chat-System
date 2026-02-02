@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
+import { useVoiceCall } from "../hooks/usevoiceCall";
 
 const EMOJIS = ["😀", "😂", "🥹", "🔥", "❤️", "👍", "🎧", "🎙️", "✨", "😤"];
 const REACTS = ["👍", "❤️", "😂", "🔥", "😮", "😢"];
 
 export default function ChatBox({
+  socket,
   messages,
   onSend,
   onSendVoice,
@@ -20,7 +22,83 @@ export default function ChatBox({
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const endRef = useRef(null);
 
-  const { isRecording, recordingTime, startRecording, stopRecording, cancelRecording } = useVoiceRecorder();
+  const { isRecording, recordingTime, startRecording, stopRecording, cancelRecording } =
+    useVoiceRecorder();
+
+  // ✅ Debug: confirm socket is reaching ChatBox
+  useEffect(() => {
+    console.log("🔌 ChatBox socket:", socket?.id, socket);
+  }, [socket]);
+
+  // ✅ Voice Call Hook with call logging
+  const handleCallLog = (logData) => {
+    console.log("📞 Call log:", logData);
+    
+    // Send call log message to chat
+    const callMessage = formatCallMessage(logData);
+    if (callMessage && socket) {
+      socket.emit("dm:send", { 
+        toUser: dmUser, 
+        text: callMessage,
+        type: "call-log" 
+      });
+    }
+  };
+
+  const call = useVoiceCall({ socket, myName, onCallLog: handleCallLog });
+
+  // ✅ Format call log message
+  const formatCallMessage = (logData) => {
+    const { type, direction, duration, timestamp } = logData;
+    
+    // Helper to format timestamp
+    const getTime = () => {
+      if (timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        });
+      }
+      return new Date().toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    };
+    
+    if (type === "missed") {
+      return direction === "outgoing" 
+        ? `📞 Missed call (no answer)` 
+        : `📞 Missed call`;
+    }
+    
+    if (type === "rejected") {
+      return direction === "outgoing"
+        ? `📞 Call declined`
+        : `📞 Call rejected`;
+    }
+    
+    if (type === "answered") {
+      const time = getTime();
+      return direction === "outgoing"
+        ? `📞 Outgoing call answered • ${time}`
+        : `📞 Incoming call answered • ${time}`;
+    }
+    
+    if (type === "ended") {
+      if (duration && duration > 0) {
+        const mins = Math.floor(duration / 60);
+        const secs = duration % 60;
+        const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        return `📞 Call ended • Duration: ${timeStr}`;
+      }
+      return `📞 Call ended`;
+    }
+    
+    return null;
+  };
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -34,116 +112,126 @@ export default function ChatBox({
     onTyping?.(false);
   };
 
-  // Handle voice recording
-  const handleVoiceStart = () => {
-    startRecording();
-  };
+  // Voice recording handlers
+  const handleVoiceStart = () => startRecording();
 
   const handleVoiceSend = async () => {
-    console.log("🎤 Stopping recording...");
     const blob = await stopRecording();
-    
-    if (!blob) {
-      console.error("❌ No blob returned from recording");
-      return;
-    }
-    
-    console.log("✅ Got blob:", blob.size, "bytes, type:", blob.type);
-    
+    if (!blob) return;
+
     if (onSendVoice) {
-      // Convert blob to base64
       const reader = new FileReader();
       reader.onloadend = () => {
-        const base64 = reader.result.split(',')[1];
-        console.log("📤 Sending voice message, base64 length:", base64?.length);
-        
+        const base64 = reader.result.split(",")[1];
+
         onSendVoice({
           audio: base64,
           duration: recordingTime,
           mimeType: blob.type,
         });
-        
-        console.log("✅ Voice message sent!");
       };
-      
-      reader.onerror = () => {
-        console.error("❌ Failed to read blob");
-      };
-      
       reader.readAsDataURL(blob);
-    } else {
-      console.error("❌ onSendVoice callback not provided");
     }
   };
 
-  const handleVoiceCancel = () => {
-    cancelRecording();
-  };
+  const handleVoiceCancel = () => cancelRecording();
 
-  // ✅ NEW: Play voice with AMPLIFICATION using Web Audio API
+  // ✅ Play voice message with amplification (Web Audio API)
   const playVoiceMessage = async (mimeType, base64Audio) => {
-    console.log("▶️ Playing voice message with amplification");
-    
     try {
-      // Create audio context
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      
-      // Convert base64 to array buffer
+
       const audioData = atob(base64Audio);
       const arrayBuffer = new ArrayBuffer(audioData.length);
       const view = new Uint8Array(arrayBuffer);
       for (let i = 0; i < audioData.length; i++) {
         view[i] = audioData.charCodeAt(i);
       }
-      
-      console.log("🔊 Decoding audio...");
-      
-      // Decode audio data
+
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      console.log("✅ Audio decoded, duration:", audioBuffer.duration);
-      
-      // Create source
+
       const source = audioContext.createBufferSource();
       source.buffer = audioBuffer;
-      
-      // ✅ CREATE GAIN NODE (VOLUME BOOSTER)
+
       const gainNode = audioContext.createGain();
-      gainNode.gain.value = 3.0; // ✅ 3x LOUDER! (Adjust this: 2.0-5.0)
-      
-      // Connect: source → gain → speakers
+      gainNode.gain.value = 3.0; // ✅ boost volume
+
       source.connect(gainNode);
       gainNode.connect(audioContext.destination);
-      
-      // Play
+
       source.start(0);
-      console.log("✅ Audio playing at 3x volume");
-      
-      // Cleanup when done
+
       source.onended = () => {
-        console.log("⏹️ Audio finished");
         audioContext.close();
       };
-      
     } catch (err) {
-      console.error("❌ Failed to play audio:", err);
+      console.error("Failed to play audio:", err);
       alert("Failed to play audio: " + err.message);
     }
   };
 
-  // Format time as MM:SS
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Normalize name for comparison
   const normalizeName = (name) => (name || "").trim().toLowerCase();
-
   const placeholder = isDM ? `Message @${dmUser || "dm"}` : "Message #general";
 
   return (
     <>
+      {/* ✅ DM CALL BAR with duration */}
+      {isDM && dmUser && (
+        <div className="dmCallBar">
+          <div className="dmCallTitle">Chat with @{dmUser}</div>
+
+          {!socket && <div style={{ opacity: 0.7 }}>Connecting…</div>}
+
+          {socket && call.state === "idle" && (
+            <button className="callBtn" onClick={() => call.startCall(dmUser)}>
+              📞 Call
+            </button>
+          )}
+
+          {socket && call.state === "calling" && (
+            <div className="callStatus">
+              Calling @{dmUser}...
+              <button className="endBtn" onClick={call.endCall}>
+                End
+              </button>
+            </div>
+          )}
+
+          {socket && call.state === "ringing" && (
+            <div className="callStatus">
+              📞 Incoming call from @{call.peer}
+              <button className="acceptBtn" onClick={call.acceptCall}>
+                Accept
+              </button>
+              <button className="rejectBtn" onClick={call.rejectCall}>
+                Reject
+              </button>
+            </div>
+          )}
+
+          {socket && call.state === "in-call" && (
+            <div className="callStatus">
+              <div className="callInfo">
+                🔊 In call with @{call.peer}
+                <span className="callTimer">{call.callDuration}</span>
+              </div>
+              <button className="muteBtn" onClick={call.toggleMute}>
+                {call.isMuted ? "🔇 Unmute" : "🔊 Mute"}
+              </button>
+              <button className="endBtn" onClick={call.endCall}>
+                End
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="chatArea">
         {messages.map((m) => {
           if (m.type === "system") {
@@ -156,16 +244,26 @@ export default function ChatBox({
             );
           }
 
-          // Proper "me" detection with normalized comparison
-          const isMe = myName && m.user && normalizeName(m.user) === normalizeName(myName);
+          // ✅ Special rendering for call log messages
+          if (m.type === "call-log") {
+            return (
+              <div key={m.id} className="callLogMsg">
+                <div className="callLogBadge">
+                  {m.text}
+                </div>
+                {m.time && <div className="callLogTime">{m.time}</div>}
+              </div>
+            );
+          }
 
+          const isMe = myName && m.user && normalizeName(m.user) === normalizeName(myName);
           const initials = (m.user || "?").slice(0, 2).toUpperCase();
+
           const msgReacts = reactions?.[m.id] || {};
           const hasReactions = Object.keys(msgReacts).length > 0;
 
           return (
             <div key={m.id} className={`chatRow ${isMe ? "me" : "other"}`}>
-              {/* Avatar on LEFT for others only */}
               {!isMe && (
                 <div className="chatAvatar" title={m.user}>
                   {initials}
@@ -173,7 +271,6 @@ export default function ChatBox({
               )}
 
               <div className="chatContent">
-                {/* Show name for others only */}
                 {!isMe && (
                   <div className="chatMeta">
                     <span className="chatName">{m.user}</span>
@@ -182,57 +279,56 @@ export default function ChatBox({
                 )}
 
                 <div className={`chatBubble ${isMe ? "myBubble" : "otherBubble"}`}>
-                  {/* Voice message */}
                   {m.type === "voice" ? (
                     <div className="voiceMessage">
-                      <button 
+                      <button
                         className="voicePlayBtn"
                         onClick={() => playVoiceMessage(m.mimeType, m.audio)}
                       >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M8 5v14l11-7z"/>
-                        </svg>
+                        ▶
                       </button>
                       <div className="voiceWaveform">
                         <div className="voiceDuration">{formatTime(m.duration || 0)}</div>
                         <div className="waveformBars">
                           {[...Array(20)].map((_, i) => (
-                            <div key={i} className="waveBar" style={{height: `${Math.random() * 100}%`}} />
+                            <div
+                              key={i}
+                              className="waveBar"
+                              style={{ height: `${Math.random() * 100}%` }}
+                            />
                           ))}
                         </div>
                       </div>
                     </div>
                   ) : (
-                    /* Text message */
                     <div className="chatText">{m.text}</div>
                   )}
-                  
-                  {/* Show time for my messages inside bubble */}
-                  {isMe && m.time && (
-                    <div className="msgTime myTime">{m.time}</div>
-                  )}
+
+                  {isMe && m.time && <div className="msgTime myTime">{m.time}</div>}
                 </div>
 
-                {/* Reactions */}
                 {hasReactions && (
                   <div className="reactionsDisplay">
-                    {Object.entries(msgReacts).map(([emoji, users]) => (
-                      users.length > 0 && (
+                    {Object.entries(msgReacts).map(([emoji, users]) =>
+                      users.length > 0 ? (
                         <button
                           key={emoji}
-                          className={`reactionBubble ${users.some(u => normalizeName(u) === normalizeName(myName)) ? "myReaction" : ""}`}
+                          className={`reactionBubble ${
+                            users.some((u) => normalizeName(u) === normalizeName(myName))
+                              ? "myReaction"
+                              : ""
+                          }`}
                           onClick={() => onReact?.(m.id, emoji)}
                           title={users.join(", ")}
                         >
                           <span className="reactionEmoji">{emoji}</span>
                           <span className="reactionCount">{users.length}</span>
                         </button>
-                      )
-                    ))}
+                      ) : null
+                    )}
                   </div>
                 )}
 
-                {/* Add reaction button */}
                 {onReact && (
                   <div className="addReaction">
                     {REACTS.map((emoji) => (
@@ -240,7 +336,6 @@ export default function ChatBox({
                         key={emoji}
                         className="quickReact"
                         onClick={() => onReact(m.id, emoji)}
-                        title={`React with ${emoji}`}
                       >
                         {emoji}
                       </button>
@@ -249,7 +344,6 @@ export default function ChatBox({
                 )}
               </div>
 
-              {/* Avatar on RIGHT for me only */}
               {isMe && (
                 <div className="chatAvatar myAvatar" title="You">
                   {initials}
@@ -263,7 +357,6 @@ export default function ChatBox({
       </div>
 
       <div className="chatComposer">
-        {/* Emoji quick picks */}
         {!isRecording && (
           <div className="emojiBar">
             {EMOJIS.map((e) => (
@@ -272,7 +365,6 @@ export default function ChatBox({
                 type="button"
                 className="emojiBtn"
                 onClick={() => setText((t) => t + e)}
-                title={`Add ${e}`}
               >
                 {e}
               </button>
@@ -280,13 +372,10 @@ export default function ChatBox({
           </div>
         )}
 
-        {/* Recording UI */}
         {isRecording && (
           <div className="recordingBar">
-            <button className="cancelRecordBtn" onClick={handleVoiceCancel} title="Cancel Recording">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-              </svg>
+            <button className="cancelRecordBtn" onClick={handleVoiceCancel}>
+              ✖
             </button>
 
             <div className="recordingInfo">
@@ -294,32 +383,18 @@ export default function ChatBox({
                 <div className="recordingDot" />
                 <span className="recordingTime">{formatTime(recordingTime)}</span>
               </div>
-              <div className="recordingWave">
-                {[...Array(30)].map((_, i) => (
-                  <div key={i} className="recordBar" />
-                ))}
-              </div>
             </div>
 
-            <button className="sendRecordBtn" onClick={handleVoiceSend} title="Send Voice Message">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-              </svg>
+            <button className="sendRecordBtn" onClick={handleVoiceSend}>
+              ➤
             </button>
           </div>
         )}
 
-        {/* Normal composer */}
         {!isRecording && (
           <div className="composerBox">
-            <button 
-              className="attachBtn"
-              onClick={() => setShowEmojiPicker(!showEmojiPicker)}
-              title="Add emoji"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
-              </svg>
+            <button className="attachBtn" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>
+              🙂
             </button>
 
             <input
@@ -339,22 +414,13 @@ export default function ChatBox({
               }}
             />
 
-            {/* Voice record button or send button */}
             {text.trim() ? (
               <button className="sendBtn" onClick={send}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                </svg>
+                ➤
               </button>
             ) : (
-              <button 
-                className="voiceRecordBtn" 
-                onClick={handleVoiceStart}
-                title="Record voice message"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
-                </svg>
+              <button className="voiceRecordBtn" onClick={handleVoiceStart}>
+                🎙
               </button>
             )}
           </div>
@@ -362,234 +428,126 @@ export default function ChatBox({
 
         {typingText && !isRecording && (
           <div className="typingLine">
-            <div className="typingDots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
             <span>{typingText}</span>
           </div>
         )}
       </div>
 
-      {/* Voice message styles */}
       <style>{`
-        .voiceMessage {
+        .dmCallBar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+          padding: 12px 16px;
+          border-radius: 12px;
+          margin-bottom: 12px;
+          background: linear-gradient(135deg, rgba(88, 101, 242, 0.1), rgba(114, 137, 218, 0.1));
+          border: 1px solid rgba(88, 101, 242, 0.2);
+        }
+        
+        .dmCallTitle { 
+          font-weight: 600; 
+          opacity: 0.9; 
+          font-size: 14px;
+        }
+        
+        .callBtn, .acceptBtn, .rejectBtn, .muteBtn, .endBtn {
+          border: none;
+          cursor: pointer;
+          padding: 8px 16px;
+          border-radius: 8px;
+          font-weight: 600;
+          font-size: 13px;
+          transition: all 0.2s;
+        }
+        
+        .callBtn {
+          background: #5865f2;
+          color: white;
+        }
+        
+        .callBtn:hover {
+          background: #4752c4;
+        }
+        
+        .acceptBtn {
+          background: #2ea043;
+          color: white;
+        }
+        
+        .acceptBtn:hover {
+          background: #26843a;
+        }
+        
+        .rejectBtn, .endBtn {
+          background: #d73a49;
+          color: white;
+        }
+        
+        .rejectBtn:hover, .endBtn:hover {
+          background: #c12838;
+        }
+        
+        .muteBtn {
+          background: rgba(255, 255, 255, 0.12);
+          color: white;
+        }
+        
+        .muteBtn:hover {
+          background: rgba(255, 255, 255, 0.18);
+        }
+        
+        .callStatus {
           display: flex;
           align-items: center;
           gap: 12px;
-          min-width: 200px;
+          flex-wrap: wrap;
+          font-size: 14px;
         }
-
-        .voicePlayBtn {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          border: none;
-          background: rgba(255, 255, 255, 0.2);
-          color: white;
-          cursor: pointer;
+        
+        .callInfo {
           display: flex;
           align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
-          flex-shrink: 0;
+          gap: 8px;
+        }
+        
+        .callTimer {
+          font-weight: 700;
+          color: #5865f2;
+          font-size: 13px;
+          padding: 4px 8px;
+          background: rgba(88, 101, 242, 0.15);
+          border-radius: 6px;
         }
 
-        .voicePlayBtn:hover {
-          background: rgba(255, 255, 255, 0.3);
-          transform: scale(1.1);
-        }
-
-        .voiceWaveform {
-          flex: 1;
+        /* ✅ Call Log Message Styling */
+        .callLogMsg {
           display: flex;
           flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          margin: 16px 0;
           gap: 4px;
         }
 
-        .voiceDuration {
-          font-size: 12px;
-          opacity: 0.8;
-        }
-
-        .waveformBars {
-          display: flex;
+        .callLogBadge {
+          background: rgba(88, 101, 242, 0.12);
+          color: rgba(255, 255, 255, 0.85);
+          padding: 8px 16px;
+          border-radius: 16px;
+          font-size: 13px;
+          font-weight: 500;
+          border: 1px solid rgba(88, 101, 242, 0.2);
+          display: inline-flex;
           align-items: center;
-          gap: 2px;
-          height: 24px;
+          gap: 6px;
         }
 
-        .waveBar {
-          width: 3px;
-          background: currentColor;
-          opacity: 0.6;
-          border-radius: 2px;
-          transition: height 0.2s ease;
-        }
-
-        /* Recording UI */
-        .recordingBar {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          padding: 16px;
-          background: var(--bg-modifier);
-          border-radius: 8px;
-          animation: slideUp 0.3s ease;
-        }
-
-        @keyframes slideUp {
-          from {
-            opacity: 0;
-            transform: translateY(10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .recordingInfo {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          gap: 8px;
-        }
-
-        .recordingIndicator {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .recordingDot {
-          width: 12px;
-          height: 12px;
-          border-radius: 50%;
-          background: var(--danger);
-          animation: pulse 1.5s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-            transform: scale(1);
-          }
-          50% {
-            opacity: 0.5;
-            transform: scale(1.1);
-          }
-        }
-
-        .recordingTime {
-          font-size: 16px;
-          font-weight: 600;
-          color: var(--text-primary);
-          min-width: 50px;
-        }
-
-        .recordingWave {
-          display: flex;
-          align-items: center;
-          gap: 2px;
-          height: 32px;
-          overflow: hidden;
-        }
-
-        .recordBar {
-          width: 3px;
-          background: var(--brand);
-          border-radius: 2px;
-          animation: waveAnim 1s ease-in-out infinite;
-        }
-
-        .recordBar:nth-child(odd) {
-          animation-delay: 0.1s;
-        }
-
-        .recordBar:nth-child(3n) {
-          animation-delay: 0.2s;
-        }
-
-        @keyframes waveAnim {
-          0%, 100% {
-            height: 8px;
-            opacity: 0.5;
-          }
-          50% {
-            height: 24px;
-            opacity: 1;
-          }
-        }
-
-        .cancelRecordBtn {
-          width: 48px;
-          height: 48px;
-          border-radius: 50%;
-          border: none;
-          background: rgba(237, 66, 69, 0.1);
-          color: var(--danger);
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
-          flex-shrink: 0;
-        }
-
-        .cancelRecordBtn:hover {
-          background: var(--danger);
-          color: white;
-          transform: scale(1.05);
-        }
-
-        .cancelRecordBtn:active {
-          transform: scale(0.95);
-        }
-
-        .sendRecordBtn {
-          width: 48px;
-          height: 48px;
-          border-radius: 50%;
-          border: none;
-          background: var(--brand);
-          color: white;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
-          flex-shrink: 0;
-        }
-
-        .sendRecordBtn:hover {
-          background: var(--brand-hover);
-          transform: scale(1.05);
-        }
-
-        .sendRecordBtn:active {
-          transform: scale(0.95);
-        }
-
-        .voiceRecordBtn {
-          width: 36px;
-          height: 36px;
-          border-radius: 50%;
-          border: none;
-          background: var(--brand);
-          color: white;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s ease;
-          flex-shrink: 0;
-        }
-
-        .voiceRecordBtn:hover {
-          background: var(--brand-hover);
-          transform: scale(1.05);
+        .callLogTime {
+          font-size: 11px;
+          opacity: 0.5;
+          margin-top: 2px;
         }
       `}</style>
     </>

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSocket } from "../hooks/useSocket";
 import ChatBox from "../components/ChatBox";
 import RemoteAudios from "../components/RemoteAudios";
@@ -32,12 +32,18 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
 
   const joined = useMemo(() => users.length > 0, [users.length]);
 
+  // ✅ JOIN GUARD - prevents repeated joins
+  const joinedRef = useRef(false);
+
   // Helper: normalize names for comparison
   const normalizeName = (name) => (name || "").trim().toLowerCase();
 
-  // ✅ JOIN THE SELECTED ROOM
+  // ✅ JOIN THE SELECTED ROOM (with guard)
   useEffect(() => {
-    if (!roomId || !myName) return;
+    if (!socket || !roomId || !myName) return;
+
+    if (joinedRef.current) return; // ✅ prevents repeated joins
+    joinedRef.current = true;
 
     console.log("🚪 Joining room:", roomId);
     
@@ -48,7 +54,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
 
     return () => {
       console.log("👋 Leaving room:", roomId);
-      // Cleanup happens via handleDisconnect
+      joinedRef.current = false;
     };
   }, [socket, roomId, myName]);
 
@@ -58,7 +64,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
     localStream.getAudioTracks().forEach((t) => (t.enabled = !muted));
   }, [localStream, muted]);
 
-  // NEW: Track known users and save to localStorage
+  // ✅ Track known users for persistent DM list
   const [knownUsers, setKnownUsers] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("vc_known_users") || "[]");
@@ -67,14 +73,19 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
     }
   });
 
+  // ✅ FIXED: Update known users with proper structure handling
   useEffect(() => {
-    const newNames = users.map(u => u.user?.name).filter(Boolean);
+    const newNames = users
+      .map(u => u?.user?.name || u?.name)
+      .filter(Boolean)
+      .map(n => n.trim());
     
     setKnownUsers(prev => {
       const combined = [...new Set([...prev, ...newNames])];
-      // Remove self from known users
       const filtered = combined.filter(n => normalizeName(n) !== normalizeName(myName));
       localStorage.setItem("vc_known_users", JSON.stringify(filtered));
+      
+      console.log("📋 Known users updated:", filtered);
       return filtered;
     });
   }, [users, myName]);
@@ -104,7 +115,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
         const emojiUsers = msgReacts[emoji] || [];
         
         if (emojiUsers.includes(user)) {
-          // Remove reaction
           const filtered = emojiUsers.filter(u => u !== user);
           if (filtered.length === 0) {
             const { [emoji]: _, ...rest } = msgReacts;
@@ -116,7 +126,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
           }
           return { ...prev, [messageId]: { ...msgReacts, [emoji]: filtered } };
         } else {
-          // Add reaction
           return {
             ...prev,
             [messageId]: { ...msgReacts, [emoji]: [...emojiUsers, user] }
@@ -295,15 +304,12 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
   // disconnect function
   const handleDisconnect = () => {
     if (confirm("Are you sure you want to leave the room?")) {
-      // 1. Stop local audio tracks
       if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
       }
 
-      // 2. Emit room:leave event to server (triggers cleanup on server)
       socket.emit("room:leave");
 
-      // 3. Clear local state immediately
       setUsers([]);
       setMessages([]);
       setTypingMap({});
@@ -313,29 +319,40 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
       setView("room");
       setActiveDMUser(null);
 
-      // 4. Disconnect socket after a brief delay to let server process
       setTimeout(() => {
         socket.disconnect();
-        
-        // 5. Call parent callback to show room selection
         onLeave?.();
       }, 150);
     }
   };
 
-  // FIXED: Create online users set for O(1) lookup
+  // ✅ FIXED: Create online users set with proper normalization
   const onlineUsersSet = useMemo(() => {
-    const names = users.map(u => u.user?.name).filter(Boolean);
-    return new Set(names.map(n => normalizeName(n)));
+    const names = users
+      .map((u) => u?.user?.name || u?.name)
+      .filter(Boolean)
+      .map((n) => (n || "").trim().toLowerCase());
+
+    return new Set(names);
   }, [users]);
 
-  // Helper to check if user is online
-  const isUserOnline = (name) => onlineUsersSet.has(normalizeName(name));
+  // ✅ Helper to check if user is online
+  const isUserOnline = (name) =>
+    onlineUsersSet.has((name || "").trim().toLowerCase());
 
-  // FIXED: Use known users (not just online users) for DM list
+  // ✅ FIXED: Use knownUsers with fallback to current online users
   const dmUsers = useMemo(() => {
-    return [...new Set(knownUsers)].filter(n => normalizeName(n) !== normalizeName(myName));
-  }, [knownUsers, myName]);
+    // Combine known users with current online users
+    const allUsers = [...new Set([...knownUsers, ...Array.from(onlineUsersSet)])];
+    
+    // Filter out self
+    return allUsers.filter(n => normalizeName(n) !== normalizeName(myName));
+  }, [knownUsers, onlineUsersSet, myName]);
+
+  // ✅ Debug logs
+  console.log("USERS RAW:", users);
+  console.log("ONLINE SET:", [...onlineUsersSet]);
+  console.log("DM USERS:", dmUsers);
 
   return (
     <div className="appShell">
@@ -370,7 +387,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
                 <path d="M5 13h14v-2H5v2zm0 4h14v-2H5v2zM5 7v2h14V7H5z"/>
               </svg>
             </div>
-            <div className="userName">{roomName}</div> {/* ✅ Show room name */}
+            <div className="userName">{roomName}</div>
           </div>
 
           <div className="sectionLabel">DIRECT MESSAGES</div>
@@ -445,7 +462,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
               </svg>
             </button>
 
-            {/* Disconnect button */}
             <button 
               className="voiceBtn" 
               onClick={handleDisconnect} 
@@ -479,7 +495,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{marginRight: 8}}>
                   <path d="M5 13h14v-2H5v2zm0 4h14v-2H5v2zM5 7v2h14V7H5z"/>
                 </svg>
-                <span className="channelTitle">{roomName}</span> {/* ✅ Show room name */}
+                <span className="channelTitle">{roomName}</span>
               </>
             ) : (
               <>
@@ -492,7 +508,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             )}
           </div>
 
-          {/* Disconnect button in topbar for mobile */}
           <button 
             className="voiceBtn topbar-disconnect" 
             onClick={handleDisconnect} 
@@ -509,6 +524,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
         </div>
 
         <ChatBox
+          socket={socket}
           messages={displayMessages}
           onSend={sendMessage}
           onSendVoice={sendVoiceMessage}  
@@ -522,7 +538,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
         />
       </div>
 
-      {/* Mobile disconnect button CSS */}
       <style>{`
         .topbar-disconnect {
           display: none;
