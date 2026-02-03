@@ -219,7 +219,7 @@ User Action → Socket Event → Controller → Service → Store/Redis → Broa
 ## Tech Stack
 
 **Frontend:** React 18, Vite, Socket.IO Client, Web Audio API, MediaRecorder API, WebRTC  
-**Backend:** Node.js, Express, Socket.IO, Redis, Multer  
+**Backend:** Node.js, Express, Socket.IO, Redis 
 **DevOps:** Docker, Git
 
 ## Screenshots
@@ -263,6 +263,26 @@ User Action → Socket Event → Controller → Service → Store/Redis → Broa
     <td width="50%">
       <img src="screenshots/Reaction.png" alt="Reactions"/>
       <p align="center"><em>Emoji Reactions</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="screenshots/Callmessage.png" alt="Call Message"/>
+      <p align="center"><em>Call Message/Request</em></p>
+    </td>
+    <td width="50%">
+      <img src="screenshots/Usercalling.png" alt="User Calling"/>
+      <p align="center"><em>Outgoing Call - Ringing</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="screenshots/acceptedcall.png" alt="Accepted Call"/>
+      <p align="center"><em>Call Accepted - Incoming</em></p>
+    </td>
+    <td width="50%">
+      <img src="screenshots/OngoingCall.png" alt="Ongoing Call"/>
+      <p align="center"><em>Ongoing Call - Active</em></p>
     </td>
   </tr>
 </table>
