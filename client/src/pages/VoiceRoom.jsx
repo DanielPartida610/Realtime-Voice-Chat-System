@@ -508,14 +508,18 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             )}
           </div>
 
+          {/* User Badge - Shows logged in user */}
+          <div className="currentUserBadge">
+            <div className="avatar tiny">
+              {myName.slice(0, 2).toUpperCase()}
+            </div>
+            <span className="currentUserName">{myName}</span>
+          </div>
+
           <button 
             className="voiceBtn topbar-disconnect" 
             onClick={handleDisconnect} 
             title="Leave Room"
-            style={{
-              marginLeft: 'auto',
-              background: 'var(--danger)'
-            }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
               <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
@@ -539,13 +543,240 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
       </div>
 
       <style>{`
-        .topbar-disconnect {
-          display: none;
+        /* ===== USER BADGE STYLING ===== */
+        .currentUserBadge {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-left: auto;
+          margin-right: 12px;
+          padding: 6px 12px;
+          background: rgba(88, 101, 242, 0.1);
+          border-radius: 16px;
+          border: 1px solid rgba(88, 101, 242, 0.2);
         }
-        
+
+        .currentUserName {
+          font-size: 14px;
+          font-weight: 600;
+          color: var(--text-normal);
+        }
+
+        .avatar.tiny {
+          width: 24px;
+          height: 24px;
+          font-size: 10px;
+          font-weight: 700;
+        }
+
+        .topbar-disconnect {
+          background: var(--danger);
+          margin-left: 0;
+        }
+
+        /* ===== MOBILE IMPROVEMENTS ===== */
         @media (max-width: 768px) {
+          /* Hide user badge text on mobile, keep avatar */
+          .currentUserName {
+            display: none;
+          }
+
+          .currentUserBadge {
+            padding: 6px;
+            margin-right: 8px;
+            background: transparent;
+            border: none;
+          }
+
+          /* Make disconnect button visible on mobile */
           .topbar-disconnect {
             display: flex !important;
+          }
+
+          /* Adjust topbar spacing */
+          .topbar {
+            padding: 12px;
+            gap: 8px;
+          }
+
+          .channelInfo {
+            flex: 1;
+            min-width: 0;
+          }
+
+          .channelTitle {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+          }
+
+          /* Improve sidebar on mobile */
+          .sidebar {
+            width: 280px;
+          }
+
+          .sidebar.open {
+            width: 280px;
+          }
+
+          /* Better voice panel on mobile */
+          .voicePanel {
+            padding: 12px;
+          }
+
+          .voiceControls {
+            gap: 8px;
+          }
+
+          .voiceBtn {
+            flex: 1;
+            min-width: 0;
+          }
+
+          /* Improve scrolling areas */
+          .sidebarScroll {
+            -webkit-overflow-scrolling: touch;
+          }
+
+          /* Better avatar sizes on mobile */
+          .avatar {
+            width: 36px;
+            height: 36px;
+            font-size: 14px;
+          }
+
+          .avatar.small {
+            width: 28px;
+            height: 28px;
+            font-size: 12px;
+          }
+
+          /* Improve user items */
+          .userItem {
+            padding: 10px 12px;
+          }
+
+          .userName {
+            font-size: 15px;
+          }
+
+          .userStatus {
+            font-size: 12px;
+          }
+
+          /* Better section labels */
+          .sectionLabel {
+            font-size: 11px;
+            padding: 16px 12px 8px;
+          }
+
+          /* Improve menu button */
+          .menuBtn {
+            padding: 8px;
+          }
+
+          /* Better status dots */
+          .statusDot {
+            width: 10px;
+            height: 10px;
+            border-width: 2px;
+          }
+        }
+
+        /* ===== SMALL MOBILE (< 400px) ===== */
+        @media (max-width: 400px) {
+          .sidebar {
+            width: 260px;
+          }
+
+          .sidebar.open {
+            width: 260px;
+          }
+
+          .sidebarHeader {
+            font-size: 15px;
+            padding: 14px 12px;
+          }
+
+          .voiceHeader {
+            font-size: 12px;
+          }
+
+          .voiceStatus {
+            font-size: 12px;
+          }
+
+          .currentUserBadge .avatar.tiny {
+            width: 28px;
+            height: 28px;
+            font-size: 11px;
+          }
+        }
+
+        /* ===== LANDSCAPE MOBILE ===== */
+        @media (max-width: 768px) and (orientation: landscape) {
+          .sidebar {
+            width: 240px;
+          }
+
+          .sidebar.open {
+            width: 240px;
+          }
+
+          .voicePanel {
+            padding: 8px;
+          }
+
+          .sectionLabel {
+            padding: 12px 8px 6px;
+          }
+        }
+
+        /* ===== TABLET IMPROVEMENTS ===== */
+        @media (min-width: 769px) and (max-width: 1024px) {
+          .currentUserBadge {
+            padding: 8px 14px;
+          }
+
+          .currentUserName {
+            font-size: 15px;
+          }
+        }
+
+        /* ===== TOUCH IMPROVEMENTS ===== */
+        @media (hover: none) and (pointer: coarse) {
+          /* Better touch targets */
+          .userItem,
+          .channelItem,
+          .voiceBtn,
+          .menuBtn,
+          .serverDot {
+            min-height: 44px;
+            min-width: 44px;
+          }
+
+          /* Prevent text selection on buttons */
+          .userItem,
+          .channelItem,
+          .voiceBtn,
+          .menuBtn,
+          .serverDot,
+          .currentUserBadge {
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          /* Better active states */
+          .userItem:active,
+          .channelItem:active {
+            transform: scale(0.98);
+            transition: transform 0.1s;
+          }
+
+          .voiceBtn:active {
+            transform: scale(0.95);
+            transition: transform 0.1s;
           }
         }
       `}</style>
