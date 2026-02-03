@@ -219,7 +219,7 @@ User Action → Socket Event → Controller → Service → Store/Redis → Broa
 ## Tech Stack
 
 **Frontend:** React 18, Vite, Socket.IO Client, Web Audio API, MediaRecorder API, WebRTC  
-**Backend:** Node.js, Express, Socket.IO, Redis, Multer  
+**Backend:** Node.js, Express, Socket.IO, Redis 
 **DevOps:** Docker, Git
 
 ## Screenshots
