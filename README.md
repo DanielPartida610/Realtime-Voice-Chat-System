@@ -17,6 +17,7 @@ A production-ready real-time voice chat system built with Socket.IO, Redis, Reac
 - Real-time text messaging with persistent chat history
 - Voice messages with Base64 encoding and playback amplification
 - Live voice streaming with mute/unmute controls
+- **1-on-1 Voice Calls (WebRTC in DMs)** - Start a direct voice call with any user from Direct Messages. Includes ringing UI, accept/reject, mute/unmute, live call timer, and clean call teardown on end/disconnect.
 - Direct (1-on-1) private messaging
 - Emoji reactions on messages
 - Redis-backed scalability for horizontal scaling
@@ -75,6 +76,7 @@ npm run dev  # Runs at http://localhost:5173
 - [How It Works](#how-it-works)
   - [Voice Messages Implementation](#voice-messages-implementation)
   - [Live Voice Streaming](#live-voice-streaming)
+  - [1-on-1 Voice Calls (WebRTC + Socket.IO Signaling)](#1-on-1-voice-calls-webrtc--socketio-signaling)
   - [Room System](#room-system)
   - [Direct Messaging](#direct-messaging)
 - [API Reference](#api-reference)
@@ -126,6 +128,7 @@ Realtime Voice Chat System provides a complete communication platform that combi
 - **Text Messaging** - Real-time chat with persistent history stored in Redis
 - **Voice Messages** - Record, send, and playback audio messages with volume amplification
 - **Live Voice Streaming** - Continuous voice communication with microphone controls
+- **1-on-1 Voice Calls (WebRTC in DMs)** - Start a direct voice call with any user from Direct Messages. Includes ringing UI, accept/reject, mute/unmute, live call timer, and clean call teardown on end/disconnect.
 - **Direct Messaging** - Private 1-on-1 conversations between users
 - **Emoji Reactions** - React to messages with emoji for quick responses
 
@@ -140,6 +143,7 @@ Realtime Voice Chat System provides a complete communication platform that combi
 ### Technical Features
 
 - **WebSocket Communication** - Bidirectional real-time data flow using Socket.IO
+- **WebRTC Integration** - Peer-to-peer voice calls with Socket.IO signaling
 - **Redis Persistence** - Chat history and user presence stored in Redis
 - **Graceful Disconnections** - Intelligent handling prevents duplicate notifications
 - **Audio Enhancement** - Echo cancellation, noise suppression, auto gain control
@@ -151,6 +155,7 @@ Realtime Voice Chat System provides a complete communication platform that combi
 - **Instant Updates** - Zero-latency message delivery and user list updates
 - **Clean Interface** - Intuitive React-based UI with responsive design
 - **Microphone Controls** - Easy mute/unmute toggle for live voice
+- **Call Controls** - Accept/reject incoming calls, end active calls, view call duration
 - **Visual Feedback** - Real-time indicators for recording, sending, playing audio
 - **Error Handling** - Clear user feedback for connection issues and errors
 
@@ -164,15 +169,18 @@ Realtime Voice Chat System provides a complete communication platform that combi
 │   - UI Layer    │
 │   - Socket.IO   │
 │   - Audio APIs  │
+│   - WebRTC      │
 └────────┬────────┘
          │
          │ WebSocket (Socket.IO)
+         │ WebRTC (P2P Audio)
          │
          ▼
 ┌─────────────────────────┐
 │  Server (Node.js)       │
 │   - Express Routes      │
 │   - Socket Controllers  │
+│   - WebRTC Signaling    │
 │   - Services Layer      │
 └────────┬────────────────┘
          │
@@ -206,10 +214,11 @@ User Action → Socket Event → Controller → Service → Store/Redis → Broa
 - **Text Messaging:** Real-time chat, Redis-backed history persistence, system notifications
 - **Voice Messages:** Record → Base64 encode → Broadcast → Playback with Web Audio amplification (2x-4x)
 - **Live Voice:** Microphone streaming via Socket.IO with mute/unmute controls and automatic cleanup
+- **1-on-1 Calls:** WebRTC peer-to-peer connections with Socket.IO signaling, call state management, ringing/timeout handling
 
 ## Tech Stack
 
-**Frontend:** React 18, Vite, Socket.IO Client, Web Audio API, MediaRecorder API  
+**Frontend:** React 18, Vite, Socket.IO Client, Web Audio API, MediaRecorder API, WebRTC  
 **Backend:** Node.js, Express, Socket.IO, Redis, Multer  
 **DevOps:** Docker, Git
 
@@ -347,6 +356,57 @@ socket.emit('room:leave');
 - Received on other clients and played in real-time
 - Automatic cleanup on disconnect prevents duplicate notifications
 
+### 1-on-1 Voice Calls (WebRTC + Socket.IO Signaling)
+
+This project supports **direct voice calling inside DMs** using WebRTC.  
+Socket.IO is used for signaling (exchange offers/answers + ICE candidates), while audio streams travel peer-to-peer via WebRTC.
+
+**Call Flow:**
+1. Caller sends `call:request`
+2. Receiver gets `call:incoming` → **Accept / Reject**
+3. If accepted → caller sends `webrtc:offer`
+4. Receiver replies with `webrtc:answer`
+5. Both exchange `webrtc:ice` candidates
+6. Connection becomes `connected` → timer starts
+7. Call ends with `call:end` → cleanup (tracks stopped, PC closed)
+
+**Features included:**
+- Ringing state + timeout (auto end if no answer)
+- Accept / Reject controls
+- Mute / Unmute during call
+- Call duration timer
+- Graceful cleanup on disconnect
+
+**Implementation Example:**
+```javascript
+// Initialize WebRTC peer connection
+const peerConnection = new RTCPeerConnection({
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+});
+
+// Add local audio stream
+localStream.getTracks().forEach(track => {
+  peerConnection.addTrack(track, localStream);
+});
+
+// Handle incoming remote stream
+peerConnection.ontrack = (event) => {
+  remoteAudio.srcObject = event.streams[0];
+};
+
+// Send ICE candidates to peer via Socket.IO
+peerConnection.onicecandidate = (event) => {
+  if (event.candidate) {
+    socket.emit('webrtc:ice', { to: peerId, candidate: event.candidate });
+  }
+};
+
+// Create and send offer
+const offer = await peerConnection.createOffer();
+await peerConnection.setLocalDescription(offer);
+socket.emit('webrtc:offer', { to: peerId, offer });
+```
+
 ### Room System
 
 **Features:**
@@ -397,6 +457,8 @@ GET http://localhost:5000/api/rooms
 
 #### Client → Server Events
 
+**Room & Chat Events**
+
 | Event | Description | Payload |
 |-------|-------------|---------|
 | `room:join` | Join a room | `{ roomId, user: { name } }` |
@@ -405,6 +467,19 @@ GET http://localhost:5000/api/rooms
 | `chat:send:voice` | Send voice message | `{ roomId, audio, user }` |
 | `chat:direct` | Send direct message | `{ to, text, user }` |
 | `chat:reaction` | React to message | `{ messageId, emoji, user }` |
+
+**Call Events**
+
+| Event | Description | Payload |
+|-------|-------------|---------|
+| `call:request` | Start a call request | `{ to }` |
+| `call:accept` | Accept incoming call | `{ to }` |
+| `call:reject` | Reject incoming call | `{ to }` |
+| `call:end` | End active call | `{ to, duration }` |
+| `call:timeout` | Call not answered | `{ to }` |
+| `webrtc:offer` | Send WebRTC offer | `{ to, offer }` |
+| `webrtc:answer` | Send WebRTC answer | `{ to, answer }` |
+| `webrtc:ice` | Send ICE candidate | `{ to, candidate }` |
 
 **Example Usage:**
 ```javascript
@@ -427,9 +502,19 @@ socket.emit('chat:send:voice', {
   audio: base64AudioString,
   user: { name: 'Alice' }
 });
+
+// Start a 1-on-1 call
+socket.emit('call:request', { to: 'Bob' });
+
+// Accept incoming call
+socket.on('call:incoming', ({ from }) => {
+  socket.emit('call:accept', { to: from });
+});
 ```
 
 #### Server → Client Events
+
+**Room & Chat Events**
 
 | Event | Description | Data |
 |-------|-------------|------|
@@ -439,6 +524,17 @@ socket.emit('chat:send:voice', {
 | `chat:message` | New message received | `{ id, roomId, type, text/audio, user, createdAt }` |
 | `chat:direct:received` | Direct message received | `{ from, text, createdAt }` |
 | `chat:reaction:update` | Reaction counts updated | `{ messageId, reactions }` |
+
+**Call Events**
+
+| Event | Description | Data |
+|-------|-------------|------|
+| `call:incoming` | Incoming call notification | `{ from }` |
+| `call:accepted` | Receiver accepted call | `{ from }` |
+| `call:rejected` | Receiver rejected call | `{ from }` |
+| `call:ended` | Call ended | `{ from, duration }` |
+| `call:timeout` | Call timed out | `{ from }` |
+| `call:unavailable` | User unavailable | `{ to }` |
 
 **Example Listeners:**
 ```javascript
@@ -460,6 +556,19 @@ socket.on('chat:message', (message) => {
 // Listen for chat history
 socket.on('chat:history', (messages) => {
   messages.forEach(msg => displayMessage(msg));
+});
+
+// Listen for incoming calls
+socket.on('call:incoming', ({ from }) => {
+  showIncomingCallUI(from);
+});
+
+// Listen for WebRTC signaling
+socket.on('webrtc:offer', async ({ from, offer }) => {
+  await peerConnection.setRemoteDescription(offer);
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+  socket.emit('webrtc:answer', { to: from, answer });
 });
 ```
 
@@ -840,17 +949,25 @@ app.use(cors({
 - Web Audio API for volume amplification
 - Managing microphone permissions and user consent
 
+### WebRTC Integration
+- Peer-to-peer connection establishment using RTCPeerConnection
+- Socket.IO as signaling channel for offer/answer/ICE exchange
+- Managing call states (idle, ringing, connected, ended)
+- Graceful cleanup of media streams and peer connections
+- Handling network transitions and reconnections
+
 ### Clean Architecture
 - MVC pattern for organized, maintainable code
 - Service layer for business logic separation
 - Hybrid storage: In-Memory for speed + Redis for persistence
-- Controller separation by domain (room, chat, voice)
+- Controller separation by domain (room, chat, voice, calls)
 
 ### User Experience
 - Graceful disconnection with `leftManually` flag
 - Real-time presence tracking across clients
 - Chat history loading on room join
 - System notifications for user events
+- Call state management with timeout handling
 
 ## Roadmap
 
@@ -878,13 +995,16 @@ app.use(cors({
 - [ ] Voice chat recording/playback
 - [ ] Screen sharing capability
 - [ ] Message search functionality
+- [ ] Group voice calls (multi-party WebRTC)
+- [ ] Call history and missed call notifications
 
 #### Performance & Scalability
 - [ ] Redis Pub/Sub for multi-instance deployment
 - [ ] Message pagination and lazy loading
 - [ ] Implement caching strategies
 - [ ] CDN integration for static assets
-- [ ] WebRTC for peer-to-peer voice (lower server load)
+- [ ] TURN server for NAT traversal
+- [ ] WebRTC connection quality monitoring
 
 #### Mobile & PWA
 - [ ] Responsive mobile design
@@ -942,6 +1062,7 @@ GitHub: [@NainaKothari-14](https://github.com/NainaKothari-14)
 - **[React](https://react.dev/)** - UI library
 - **[Vite](https://vitejs.dev/)** - Fast build tool
 - **[Node.js](https://nodejs.org/)** - JavaScript runtime
+- **[WebRTC](https://webrtc.org/)** - Peer-to-peer real-time communication
 
 **Inspiration:**
 - Modern real-time communication platforms
@@ -974,6 +1095,6 @@ If this project helps you, please consider:
 
 ---
 
-**❤️ Built with Socket.IO, Redis, React, and Node.js**
+**❤️ Built with Socket.IO, Redis, React, WebRTC, and Node.js**
 
 *If this project helps you, consider giving it a star ⭐!*
