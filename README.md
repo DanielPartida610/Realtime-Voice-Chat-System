@@ -265,6 +265,26 @@ User Action → Socket Event → Controller → Service → Store/Redis → Broa
       <p align="center"><em>Emoji Reactions</em></p>
     </td>
   </tr>
+  <tr>
+    <td width="50%">
+      <img src="screenshots/Callmessage.png" alt="Call Message"/>
+      <p align="center"><em>Call Message/Request</em></p>
+    </td>
+    <td width="50%">
+      <img src="screenshots/Usercalling.png" alt="User Calling"/>
+      <p align="center"><em>Outgoing Call - Ringing</em></p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="screenshots/acceptedcall.png" alt="Accepted Call"/>
+      <p align="center"><em>Call Accepted - Incoming</em></p>
+    </td>
+    <td width="50%">
+      <img src="screenshots/OngoingCall.png" alt="Ongoing Call"/>
+      <p align="center"><em>Ongoing Call - Active</em></p>
+    </td>
+  </tr>
 </table>
 
 ## How It Works
