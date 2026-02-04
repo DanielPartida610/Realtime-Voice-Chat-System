@@ -18,6 +18,7 @@ export default function ChatBox({
   isDM = false,
   dmUser = "",
   myName = "",
+  roomName = "", // Add room name for non-DM messages
 }) {
   const [text, setText] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -140,18 +141,38 @@ export default function ChatBox({
 
       console.log("✅ Upload successful:", uploaded);
 
-      // Send file message
-      if (onSend) {
-        onSend({
-          type: "file",
-          url: uploaded.secure_url,
-          name: uploaded.original_filename || file.name,
-          mimeType: file.type,
-          size: uploaded.size,
-          width: uploaded.width,
-          height: uploaded.height,
-          category: uploaded.category,
+      // ✅ FIXED: Send file message properly through socket
+      const fileMessage = {
+        type: "file",
+        url: uploaded.secure_url,
+        name: uploaded.original_filename || file.name,
+        mimeType: file.type,
+        size: uploaded.size,
+        width: uploaded.width,
+        height: uploaded.height,
+        category: uploaded.category,
+      };
+
+      console.log("📨 Sending file message:", fileMessage);
+
+      if (isDM && dmUser && socket) {
+        // ✅ DM: Send directly via socket
+        socket.emit("dm:send", {
+          toUser: dmUser,
+          ...fileMessage,
         });
+        console.log("✅ File sent to DM:", dmUser);
+      } else if (socket) {
+        // ✅ Room message: Send via socket
+        socket.emit("message:send", {
+          room: roomName || "general",
+          ...fileMessage,
+        });
+        console.log("✅ File sent to room:", roomName || "general");
+      } else if (onSend) {
+        // ✅ Fallback: Use onSend callback
+        onSend(fileMessage);
+        console.log("✅ File sent via onSend callback");
       }
 
       // Reset file input
