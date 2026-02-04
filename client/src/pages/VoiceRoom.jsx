@@ -4,6 +4,7 @@ import ChatBox from "../components/ChatBox";
 import RemoteAudios from "../components/RemoteAudios";
 import { useLocalAudio } from "../hooks/useLocalAudio";
 import { useWebRTC } from "../hooks/useWebRTC";
+import { useVoiceCall } from "../hooks/useVoiceCall";
 
 export default function VoiceRoom({ roomId = "general", roomName = "General", onLeave }) {
   const socket = useSocket();
@@ -30,6 +31,95 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
   const { stream: localStream } = useLocalAudio();
   const { remoteStreams } = useWebRTC(socket, localStream, users);
 
+  // ✅ GLOBAL CALL HANDLER - Always active
+  const handleCallLog = (logData) => {
+    console.log("📞 Call log:", logData);
+    
+    // Send call log message to chat
+    const callMessage = formatCallMessage(logData);
+    if (callMessage && socket && logData.peer) {
+      socket.emit("dm:send", { 
+        toUser: logData.peer, 
+        text: callMessage,
+        type: "call-log" 
+      });
+    }
+  };
+
+  const call = useVoiceCall({ socket, myName, onCallLog: handleCallLog });
+
+  // ✅ Format call log message
+  const formatCallMessage = (logData) => {
+    const { type, direction, duration, timestamp } = logData;
+    
+    const getTime = () => {
+      if (timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        });
+      }
+      return new Date().toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    };
+    
+    if (type === "missed") {
+      return direction === "outgoing" 
+        ? `📞 Missed call (no answer)` 
+        : `📞 Missed call`;
+    }
+    
+    if (type === "rejected") {
+      return direction === "outgoing"
+        ? `📞 Call declined`
+        : `📞 Call rejected`;
+    }
+    
+    if (type === "answered") {
+      const time = getTime();
+      return direction === "outgoing"
+        ? `📞 Outgoing call answered • ${time}`
+        : `📞 Incoming call answered • ${time}`;
+    }
+    
+    if (type === "ended") {
+      if (duration && duration > 0) {
+        const mins = Math.floor(duration / 60);
+        const secs = duration % 60;
+        const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        return `📞 Call ended • Duration: ${timeStr}`;
+      }
+      return `📞 Call ended`;
+    }
+    
+    return null;
+  };
+
+  // ✅ Auto-open DM when accepting call
+  const handleAcceptCall = async () => {
+    const peerName = call.peer;
+    console.log("🎯 Accepting call from:", peerName);
+
+    if (!peerName) {
+      console.error("❌ No peer name available!");
+      return;
+    }
+
+    // ✅ Accept the call
+    await call.acceptCall();
+
+    // ✅ Small delay to let WebRTC connection establish before switching view
+    setTimeout(() => {
+      console.log("🎯 Opening DM with:", peerName);
+      openDM(peerName);
+    }, 500);
+  };
+
   const joined = useMemo(() => users.length > 0, [users.length]);
 
   // ✅ JOIN GUARD - prevents repeated joins
@@ -42,7 +132,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
   useEffect(() => {
     if (!socket || !roomId || !myName) return;
 
-    if (joinedRef.current) return; // ✅ prevents repeated joins
+    if (joinedRef.current) return;
     joinedRef.current = true;
 
     console.log("🚪 Joining room:", roomId);
@@ -73,7 +163,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
     }
   });
 
-  // ✅ FIXED: Update known users with proper structure handling
+  // ✅ Update known users with proper structure handling
   useEffect(() => {
     const newNames = users
       .map(u => u?.user?.name || u?.name)
@@ -326,7 +416,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
     }
   };
 
-  // ✅ FIXED: Create online users set with proper normalization
+  // ✅ Create online users set with proper normalization
   const onlineUsersSet = useMemo(() => {
     const names = users
       .map((u) => u?.user?.name || u?.name)
@@ -340,19 +430,11 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
   const isUserOnline = (name) =>
     onlineUsersSet.has((name || "").trim().toLowerCase());
 
-  // ✅ FIXED: Use knownUsers with fallback to current online users
+  // ✅ Use knownUsers with fallback to current online users
   const dmUsers = useMemo(() => {
-    // Combine known users with current online users
     const allUsers = [...new Set([...knownUsers, ...Array.from(onlineUsersSet)])];
-    
-    // Filter out self
     return allUsers.filter(n => normalizeName(n) !== normalizeName(myName));
   }, [knownUsers, onlineUsersSet, myName]);
-
-  // ✅ Debug logs
-  console.log("USERS RAW:", users);
-  console.log("ONLINE SET:", [...onlineUsersSet]);
-  console.log("DM USERS:", dmUsers);
 
   return (
     <div className="appShell">
@@ -399,13 +481,17 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
           {dmUsers.map((name) => {
             const isOnline = isUserOnline(name);
             const isActive = view === "dm" && normalizeName(activeDMUser) === normalizeName(name);
+            const isCalling = call.state === "ringing" && normalizeName(call.peer) === normalizeName(name);
             
             return (
               <div
-                className={`userItem ${isActive ? "active" : ""}`}
+                className={`userItem ${isActive ? "active" : ""} ${isCalling ? "calling" : ""}`}
                 key={name}
                 onClick={() => openDM(name)}
               >
+                {isCalling && (
+                  <div className="callingBadge">📞</div>
+                )}
                 <div className="avatar">
                   {name.slice(0, 2).toUpperCase()}
                   <div className={`statusDot ${isOnline ? "online" : "offline"}`} />
@@ -413,7 +499,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
                 <div className="userMeta">
                   <div className="userName">{name}</div>
                   <div className="userStatus">
-                    {isActive ? "Active" : isOnline ? "Online" : "Offline"}
+                    {isCalling ? "Calling..." : isActive ? "Active" : isOnline ? "Online" : "Offline"}
                   </div>
                 </div>
               </div>
@@ -508,7 +594,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             )}
           </div>
 
-          {/* User Badge - Shows logged in user */}
           <div className="currentUserBadge">
             <div className="avatar tiny">
               {myName.slice(0, 2).toUpperCase()}
@@ -531,7 +616,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
           socket={socket}
           messages={displayMessages}
           onSend={sendMessage}
-          onSendVoice={sendVoiceMessage}  
+          onSendVoice={sendVoiceMessage}
           onTyping={view === "room" ? setTyping : undefined}
           typingText={view === "room" ? typingText : ""}
           onReact={handleReact}
@@ -539,10 +624,198 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
           isDM={view === "dm"}
           dmUser={activeDMUser || ""}
           myName={myName}
+          call={call}
         />
       </div>
 
+      {/* ✅ GLOBAL INCOMING CALL POPUP */}
+      {call.state === "ringing" && (
+        <div className="callOverlay" onClick={(e) => e.target.className === "callOverlay" && call.rejectCall()}>
+          <div className="callPopup">
+            <div className="callHeader">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="#3ba55d">
+                <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
+              </svg>
+              <div className="callTitle">Incoming Call</div>
+            </div>
+            
+            <div className="callPeer">
+              <div className="avatar">
+                {(call.peer || "?").slice(0, 2).toUpperCase()}
+              </div>
+              <div className="peerName">{call.peer}</div>
+            </div>
+
+            <div className="callActions">
+              <button className="callBtn reject" onClick={call.rejectCall}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.68-1.36-2.66-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+                </svg>
+                Decline
+              </button>
+              
+              <button className="callBtn accept" onClick={handleAcceptCall}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20.01 15.38c-1.23 0-2.42-.2-3.53-.56-.35-.12-.74-.03-1.01.24l-1.57 1.97c-2.83-1.35-5.48-3.9-6.89-6.83l1.95-1.66c.27-.28.35-.67.24-1.02-.37-1.11-.56-2.3-.56-3.53 0-.54-.45-.99-.99-.99H4.19C3.65 3 3 3.24 3 3.99 3 13.28 10.73 21 20.01 21c.71 0 .99-.63.99-1.18v-3.45c0-.54-.45-.99-.99-.99z"/>
+                </svg>
+                Accept
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
+        /* ===== GLOBAL CALL POPUP ===== */
+        .callOverlay {
+          position: fixed;
+          inset: 0;
+          display: flex;
+          align-items: flex-start;
+          justify-content: center;
+          padding-top: 80px;
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(4px);
+          z-index: 10000;
+          animation: fadeIn 0.2s ease-out;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .callPopup {
+          background: var(--bg-secondary);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 16px;
+          padding: 24px;
+          min-width: 320px;
+          max-width: 400px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+          animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+          from {
+            transform: translateY(-20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+
+        .callHeader {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 20px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .callTitle {
+          font-size: 18px;
+          font-weight: 700;
+          color: var(--text-normal);
+        }
+
+        .callPeer {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 12px;
+          margin: 20px 0;
+        }
+
+        .callPeer .avatar {
+          width: 64px;
+          height: 64px;
+          font-size: 24px;
+          font-weight: 700;
+          background: linear-gradient(135deg, #5865f2 0%, #7289da 100%);
+          color: white;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 12px rgba(88, 101, 242, 0.3);
+        }
+
+        .peerName {
+          font-size: 20px;
+          font-weight: 600;
+          color: var(--text-normal);
+        }
+
+        .callActions {
+          display: flex;
+          gap: 12px;
+          margin-top: 24px;
+        }
+
+        .callBtn {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 14px 20px;
+          border: none;
+          border-radius: 12px;
+          font-size: 15px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .callBtn:active {
+          transform: scale(0.96);
+        }
+
+        .callBtn.reject {
+          background: #ed4245;
+          color: white;
+        }
+
+        .callBtn.reject:hover {
+          background: #c9393c;
+        }
+
+        .callBtn.accept {
+          background: #3ba55d;
+          color: white;
+        }
+
+        .callBtn.accept:hover {
+          background: #2d7d46;
+        }
+
+        /* ✅ Calling badge in sidebar */
+        .userItem {
+          position: relative;
+        }
+
+        .callingBadge {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          font-size: 14px;
+          animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(1.1); }
+        }
+
+        .userItem.calling {
+          background: rgba(88, 101, 242, 0.15);
+          border-left: 3px solid #5865f2;
+        }
+
         /* ===== USER BADGE STYLING ===== */
         .currentUserBadge {
           display: flex;
@@ -576,7 +849,31 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
 
         /* ===== MOBILE IMPROVEMENTS ===== */
         @media (max-width: 768px) {
-          /* Hide user badge text on mobile, keep avatar */
+          .callOverlay {
+            padding-top: 60px;
+          }
+
+          .callPopup {
+            margin: 0 16px;
+            min-width: auto;
+            width: calc(100% - 32px);
+          }
+
+          .callPeer .avatar {
+            width: 56px;
+            height: 56px;
+            font-size: 20px;
+          }
+
+          .peerName {
+            font-size: 18px;
+          }
+
+          .callBtn {
+            padding: 12px 16px;
+            font-size: 14px;
+          }
+
           .currentUserName {
             display: none;
           }
@@ -588,12 +885,10 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             border: none;
           }
 
-          /* Make disconnect button visible on mobile */
           .topbar-disconnect {
             display: flex !important;
           }
 
-          /* Adjust topbar spacing */
           .topbar {
             padding: 12px;
             gap: 8px;
@@ -610,7 +905,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             white-space: nowrap;
           }
 
-          /* Improve sidebar on mobile */
           .sidebar {
             width: 280px;
           }
@@ -619,7 +913,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             width: 280px;
           }
 
-          /* Better voice panel on mobile */
           .voicePanel {
             padding: 12px;
           }
@@ -633,12 +926,10 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             min-width: 0;
           }
 
-          /* Improve scrolling areas */
           .sidebarScroll {
             -webkit-overflow-scrolling: touch;
           }
 
-          /* Better avatar sizes on mobile */
           .avatar {
             width: 36px;
             height: 36px;
@@ -651,7 +942,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             font-size: 12px;
           }
 
-          /* Improve user items */
           .userItem {
             padding: 10px 12px;
           }
@@ -664,18 +954,15 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             font-size: 12px;
           }
 
-          /* Better section labels */
           .sectionLabel {
             font-size: 11px;
             padding: 16px 12px 8px;
           }
 
-          /* Improve menu button */
           .menuBtn {
             padding: 8px;
           }
 
-          /* Better status dots */
           .statusDot {
             width: 10px;
             height: 10px;
@@ -683,7 +970,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
           }
         }
 
-        /* ===== SMALL MOBILE (< 400px) ===== */
         @media (max-width: 400px) {
           .sidebar {
             width: 260px;
@@ -713,7 +999,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
           }
         }
 
-        /* ===== LANDSCAPE MOBILE ===== */
         @media (max-width: 768px) and (orientation: landscape) {
           .sidebar {
             width: 240px;
@@ -732,7 +1017,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
           }
         }
 
-        /* ===== TABLET IMPROVEMENTS ===== */
         @media (min-width: 769px) and (max-width: 1024px) {
           .currentUserBadge {
             padding: 8px 14px;
@@ -743,9 +1027,7 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
           }
         }
 
-        /* ===== TOUCH IMPROVEMENTS ===== */
         @media (hover: none) and (pointer: coarse) {
-          /* Better touch targets */
           .userItem,
           .channelItem,
           .voiceBtn,
@@ -755,7 +1037,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             min-width: 44px;
           }
 
-          /* Prevent text selection on buttons */
           .userItem,
           .channelItem,
           .voiceBtn,
@@ -767,7 +1048,6 @@ export default function VoiceRoom({ roomId = "general", roomName = "General", on
             -webkit-tap-highlight-color: transparent;
           }
 
-          /* Better active states */
           .userItem:active,
           .channelItem:active {
             transform: scale(0.98);

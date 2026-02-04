@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { useVoiceRecorder } from "../hooks/useVoiceRecorder";
-import { useVoiceCall } from "../hooks/usevoiceCall";
 
 const EMOJIS = ["😀", "😂", "🥹", "🔥", "❤️", "👍", "🎧", "🎙️", "✨", "😤"];
 const REACTS = ["👍", "❤️", "😂", "🔥", "😮", "😢"];
@@ -17,6 +16,7 @@ export default function ChatBox({
   isDM = false,
   dmUser = "",
   myName = "",
+  call, // ✅ Receive call from parent
 }) {
   const [text, setText] = useState("");
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
@@ -24,81 +24,6 @@ export default function ChatBox({
 
   const { isRecording, recordingTime, startRecording, stopRecording, cancelRecording } =
     useVoiceRecorder();
-
-  // ✅ Debug: confirm socket is reaching ChatBox
-  useEffect(() => {
-    console.log("🔌 ChatBox socket:", socket?.id, socket);
-  }, [socket]);
-
-  // ✅ Voice Call Hook with call logging
-  const handleCallLog = (logData) => {
-    console.log("📞 Call log:", logData);
-    
-    // Send call log message to chat
-    const callMessage = formatCallMessage(logData);
-    if (callMessage && socket) {
-      socket.emit("dm:send", { 
-        toUser: dmUser, 
-        text: callMessage,
-        type: "call-log" 
-      });
-    }
-  };
-
-  const call = useVoiceCall({ socket, myName, onCallLog: handleCallLog });
-
-  // ✅ Format call log message
-  const formatCallMessage = (logData) => {
-    const { type, direction, duration, timestamp } = logData;
-    
-    // Helper to format timestamp
-    const getTime = () => {
-      if (timestamp) {
-        const date = new Date(timestamp);
-        return date.toLocaleTimeString('en-US', { 
-          hour: 'numeric', 
-          minute: '2-digit',
-          hour12: true 
-        });
-      }
-      return new Date().toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      });
-    };
-    
-    if (type === "missed") {
-      return direction === "outgoing" 
-        ? `📞 Missed call (no answer)` 
-        : `📞 Missed call`;
-    }
-    
-    if (type === "rejected") {
-      return direction === "outgoing"
-        ? `📞 Call declined`
-        : `📞 Call rejected`;
-    }
-    
-    if (type === "answered") {
-      const time = getTime();
-      return direction === "outgoing"
-        ? `📞 Outgoing call answered • ${time}`
-        : `📞 Incoming call answered • ${time}`;
-    }
-    
-    if (type === "ended") {
-      if (duration && duration > 0) {
-        const mins = Math.floor(duration / 60);
-        const secs = duration % 60;
-        const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-        return `📞 Call ended • Duration: ${timeStr}`;
-      }
-      return `📞 Call ended`;
-    }
-    
-    return null;
-  };
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -112,7 +37,6 @@ export default function ChatBox({
     onTyping?.(false);
   };
 
-  // Voice recording handlers
   const handleVoiceStart = () => startRecording();
 
   const handleVoiceSend = async () => {
@@ -136,7 +60,6 @@ export default function ChatBox({
 
   const handleVoiceCancel = () => cancelRecording();
 
-  // ✅ Play voice message with amplification (Web Audio API)
   const playVoiceMessage = async (mimeType, base64Audio) => {
     try {
       const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -154,7 +77,7 @@ export default function ChatBox({
       source.buffer = audioBuffer;
 
       const gainNode = audioContext.createGain();
-      gainNode.gain.value = 3.0; // ✅ boost volume
+      gainNode.gain.value = 3.0;
 
       source.connect(gainNode);
       gainNode.connect(audioContext.destination);
@@ -182,7 +105,7 @@ export default function ChatBox({
   return (
     <>
       {/* ✅ DM CALL BAR with duration */}
-      {isDM && dmUser && (
+      {isDM && dmUser && call && (
         <div className="dmCallBar">
           <div className="dmCallTitle">Chat with @{dmUser}</div>
 
@@ -199,18 +122,6 @@ export default function ChatBox({
               Calling @{dmUser}...
               <button className="endBtn" onClick={call.endCall}>
                 End
-              </button>
-            </div>
-          )}
-
-          {socket && call.state === "ringing" && (
-            <div className="callStatus">
-              📞 Incoming call from @{call.peer}
-              <button className="acceptBtn" onClick={call.acceptCall}>
-                Accept
-              </button>
-              <button className="rejectBtn" onClick={call.rejectCall}>
-                Reject
               </button>
             </div>
           )}
@@ -244,7 +155,6 @@ export default function ChatBox({
             );
           }
 
-          // ✅ Special rendering for call log messages
           if (m.type === "call-log") {
             return (
               <div key={m.id} className="callLogMsg">
@@ -521,7 +431,6 @@ export default function ChatBox({
           border-radius: 6px;
         }
 
-        /* ✅ Call Log Message Styling */
         .callLogMsg {
           display: flex;
           flex-direction: column;
